@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>College Fest Admin Panel - Upload Attendees</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f4f4f4;
+            color: #333;
+        }
+        .container {
+            background-color: #fff;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            max-width: 600px;
+            margin: 50px auto;
+            text-align: center;
+        }
+        h1 {
+            color: #0056b3;
+            margin-bottom: 25px;
+        }
+        input[type="file"] {
+            display: block;
+            width: calc(100% - 20px);
+            padding: 10px;
+            margin: 0 auto 20px auto;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            padding: 12px 25px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background-color 0.3s ease;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        #responseMessage {
+            margin-top: 25px;
+            padding: 15px;
+            border-radius: 5px;
+            font-weight: bold;
+            display: none; /* Hidden by default */
+            white-space: pre-wrap; /* Preserve whitespace and line breaks */
+            text-align: left;
+        }
+        #responseMessage.success {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        #responseMessage.error {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .note {
+            margin-top: 20px;
+            font-size: 0.9em;
+            color: #666;
+        }
+        .note strong {
+            color: #333;
+        }
+        .flashes {
+            list-style: none;
+            padding: 0;
+            margin-bottom: 20px;
+        }
+        .flashes li {
+            padding: 10px;
+            margin-bottom: 10px;
+            border-radius: 5px;
+            font-size: 0.9em;
+        }
+        .flashes .success { background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .flashes .error { background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        .flashes .warning { background-color: #fff3cd; color: #856404; border: 1px solid #ffeeba; }
+        .flashes .info { background-color: #d1ecf1; color: #0c5460; border: 1px solid #bee5eb; }
+        .event-section {
+            margin-bottom: 25px;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            background-color: #f9f9f9;
+            text-align: left; /* Align contents to left */
+        }
+        .event-section h3 {
+            color: #0056b3;
+            margin-top: 0;
+            margin-bottom: 15px;
+            text-align: center; /* Center the event type title */
+        }
+        .event-section label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        .event-section input[type="date"],
+        .event-section input[type="time"] {
+            width: calc(100% - 22px);
+            padding: 10px;
+            margin-bottom: 15px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        .event-section button {
+            width: 100%; /* Make button full width in its section */
+            background-color: #28a745;
+            color: white;
+            padding: 12px 0;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background-color 0.3s ease;
+        }
+        button:hover {
+            background-color: #218838;
+        }
+        /* Style for response message specific to each event */
+        .event-response-message {
+            margin-top: 10px;
+            padding: 10px;
+            border-radius: 5px;
+            font-weight: bold;
+            display: none;
+            white-space: pre-wrap;
+            text-align: left;
+        }
+        .event-response-message.success {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .event-response-message.error {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>College Fest Admin Panel</h1>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                <ul class="flashes">
+                {% for category, message in messages %}
+                    <li class="{{ category }}">{{ message }}</li>
+                {% endfor %}
+                </ul>
+            {% endif %}
+        {% endwith %}
+
+        <div style="text-align: right; margin-bottom: 10px;">
+            <a href="{{ url_for('admin_logout') }}" style="color: #dc3545; text-decoration: none;">Logout</a>
+        </div>
+
+        <h2>Upload Attendee Data (Excel .xlsx)</h2>
+        <input type="file" id="excelFile" accept=".xlsx">
+        <button onclick="uploadFile()">Upload Data</button>
+
+        <div id="responseMessage"></div>
+
+        <div class="note">
+            <strong>Important:</strong> Your Excel file must have the exact column headers (case-sensitive) in the first row:
+            <br><code>Participant Name | Batch | Roll Number | Designation | Email</code>
+        </div>
+        <div class="note">
+            Designations like 'Organizer', 'Vendor', 'Teacher', 'Faculty' will allow multiple entries.
+        </div>
+
+        <h2 style="margin-top: 40px;">Generate QR Codes for Events</h2>
+        <div class="note">
+            Set the date and time for each event, then click 'Generate QRs'.
+            <br>Emails will be sent automatically by the server's scheduler when the event time approaches (if scheduler is active).
+        </div>
+
+        <div class="event-section">
+            <h3>Comedian Show</h3>
+            <label for="comedianDate">Date:</label>
+            <input type="date" id="comedianDate" value="2025-10-26">
+            <label for="comedianTime">Time:</label>
+            <input type="time" id="comedianTime" value="11:00">
+            <button onclick="generateQRs('comedian', 'comedianDate', 'comedianTime', 'comedianResponseMessage')">Generate QRs for Comedian</button>
+            <div id="comedianResponseMessage" class="event-response-message"></div>
+        </div>
+
+        <div class="event-section">
+            <h3>Day 1 Night</h3>
+            <label for="day1NightDate">Date:</label>
+            <input type="date" id="day1NightDate" value="2025-10-26">
+            <label for="day1NightTime">Time:</label>
+            <input type="time" id="day1NightTime" value="19:00">
+            <button onclick="generateQRs('day1_night', 'day1NightDate', 'day1NightTime', 'day1NightResponseMessage')">Generate QRs for Day 1 Night</button>
+            <div id="day1NightResponseMessage" class="event-response-message"></div>
+        </div>
+
+        <div class="event-section">
+            <h3>Day 2 Night</h3>
+            <label for="day2NightDate">Date:</label>
+            <input type="date" id="day2NightDate" value="2025-10-27">
+            <label for="day2NightTime">Time:</label>
+            <input type="time" id="day2NightTime" value="19:00">
+            <button onclick="generateQRs('day2_night', 'day2NightDate', 'day2NightTime', 'day2NightResponseMessage')">Generate QRs for Day 2 Night</button>
+            <div id="day2NightResponseMessage" class="event-response-message"></div>
+        </div>
+
+        <div class="event-section">
+            <h3>Day 3 Night</h3>
+            <label for="day3NightDate">Date:</label>
+            <input type="date" id="day3NightDate" value="2025-10-28">
+            <label for="day3NightTime">Time:</label>
+            <input type="time" id="day3NightTime" value="19:00">
+            <button onclick="generateQRs('day3_night', 'day3NightDate', 'day3NightTime', 'day3NightResponseMessage')">Generate QRs for Day 3 Night</button>
+            <div id="day3NightResponseMessage" class="event-response-message"></div>
+        </div>
+
+        </div>
+
+    <script>
+        // Helper function for general messages (Excel upload)
+        async function uploadFile() {
+            const fileInput = document.getElementById('excelFile');
+            const responseMessageDiv = document.getElementById('responseMessage');
+            responseMessageDiv.style.display = 'none'; // Hide previous message
+
+            if (fileInput.files.length === 0) {
+                displayMessage('Please select an Excel file.', 'error');
+                return;
+            }
+
+            const file = fileInput.files[0];
+            const formData = new FormData();
+            formData.append('file', file);
+
+            try {
+                const response = await fetch('{{ url_for('upload_excel') }}', { // Use url_for for Flask route
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+
+                if (response.ok) { // Check for 2xx status codes
+                    let msg = `Upload successful!\nInserted: ${data.inserted_count} attendees\nUpdated: ${data.updated_count} attendees`;
+                    if (data.errors && data.errors.length > 0) {
+                        msg += `\nErrors encountered:\n${data.errors.join('\n')}`;
+                        displayMessage(msg, 'error'); // Show errors even if partly successful
+                    } else {
+                        displayMessage(msg, 'success');
+                    }
+                } else { // Handle non-2xx status codes (e.g., 400, 500)
+                    displayMessage(`Error: ${data.error || 'Unknown error'}\nStatus: ${response.status}`, 'error');
+                }
+            } catch (error) {
+                console.error('Network or parsing error:', error);
+                displayMessage(`Network error or server unreachable: ${error.message}. Is your Flask server running?`, 'error');
+            }
+        }
+
+        function displayMessage(message, type) {
+            const responseMessageDiv = document.getElementById('responseMessage');
+            responseMessageDiv.textContent = message;
+            responseMessageDiv.className = ''; // Clear previous classes
+            responseMessageDiv.classList.add(type);
+            responseMessageDiv.style.display = 'block';
+        }
+
+        // Helper function for QR generation messages
+        async function generateQRs(eventType, dateInputId, timeInputId, messageElementId) {
+            const dateInput = document.getElementById(dateInputId);
+            const timeInput = document.getElementById(timeInputId);
+            const qrResponseMessageDiv = document.getElementById(messageElementId);
+            qrResponseMessageDiv.style.display = 'none';
+
+            const eventDate = dateInput.value;
+            const eventTime = timeInput.value;
+
+            if (!eventDate || !eventTime) {
+                displayQrMessage('Please select both date and time.', 'error', messageElementId);
+                return;
+            }
+
+            const eventDatetime = `${eventDate} ${eventTime}`;
+
+            const confirmGenerate = confirm(`Are you sure you want to generate QR codes for "${eventType.replace('_', ' ')}" starting at ${eventDatetime}? This will create/update entries for all attendees.`);
+            if (!confirmGenerate) {
+                return;
+            }
+
+            try {
+                const response = await fetch('{{ url_for('generate_qrs') }}', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        event_type: eventType,
+                        event_datetime: eventDatetime
+                    })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    let msg = `QR Generation successful for ${eventType.replace('_', ' ')}!\nGenerated: ${data.generated_count} QRs\nSkipped (already existed): ${data.skipped_count} QRs`;
+                    msg += `\nValid From: ${data.valid_from}\nValid Until: ${data.valid_until}`;
+                    if (data.errors && data.errors.length > 0) {
+                        msg += `\nErrors: ${data.errors.join('\n')}`;
+                        displayQrMessage(msg, 'error', messageElementId);
+                    } else {
+                        displayQrMessage(msg, 'success', messageElementId);
+                    }
+                } else {
+                    displayQrMessage(`Error generating QRs: ${data.error || 'Unknown error'}`, 'error', messageElementId);
+                }
+            } catch (error) {
+                console.error('Network or parsing error during QR generation:', error);
+                displayQrMessage(`Network error or server unreachable: ${error.message}. Is your Flask server running?`, 'error', messageElementId);
+            }
+        }
+
+        function displayQrMessage(message, type, elementId) {
+            const messageDiv = document.getElementById(elementId);
+            messageDiv.textContent = message;
+            messageDiv.className = '';
+            messageDiv.classList.add(type);
+            messageDiv.style.display = 'block';
+        }
+
+        // Photo upload functions are removed for this demo version
+    </script>
+</body>
+</html>

@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>College Fest QR Scanner</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #121212;
+            color: #e0e0e0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+        }
+        #container {
+            width: 100%;
+            max-width: 600px;
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+        h1 {
+            color: #bb86fc;
+            margin-bottom: 20px;
+        }
+        #video-container {
+            position: relative;
+            width: 100%;
+            max-width: 400px;
+            aspect-ratio: 1 / 1;
+            overflow: hidden;
+            border: 3px solid #bb86fc;
+            border-radius: 12px;
+            background-color: black;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        #qr-canvas {
+            display: none;
+        }
+        #result {
+            background-color: #1e1e1e;
+            padding: 20px;
+            border-radius: 12px;
+            margin-top: 20px;
+            width: 100%;
+            max-width: 400px;
+            text-align: center;
+            word-wrap: break-word;
+            border: 1px solid #333;
+        }
+        .status-message { font-size: 1.5em; margin-bottom: 15px; }
+        .status-valid { color: #03dac6; font-weight: bold; }
+        .status-invalid { color: #cf6679; font-weight: bold; }
+        .status-error { color: #cf6679; font-weight: bold; }
+        .attendee-info { margin-top: 10px; font-size: 1em; line-height: 1.6; text-align: left; }
+        .attendee-info p { margin: 5px 0; }
+        .button-container { margin-top: 20px; }
+        button {
+            background-color: #bb86fc;
+            color: #121212;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: bold;
+            transition: background-color 0.3s ease;
+        }
+        button:hover {
+            background-color: #a362ea;
+        }
+        .permission-message {
+            color: #cf6679;
+            font-size: 1.1em;
+            margin-top: 20px;
+        }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
+</head>
+<body>
+    <div id="container">
+        <h1>QR Code Scanner</h1>
+        <p>Point camera at a QR code</p>
+
+        <div id="video-container">
+            <video id="qr-video" autoplay playsinline></video>
+            <canvas id="qr-canvas"></canvas>
+        </div>
+
+        <p id="permission-message" class="permission-message" style="display:none;">
+            Please grant camera permissions to use the scanner.
+        </p>
+
+        <div id="result">
+            Scan result will appear here.
+        </div>
+
+        <div class="button-container">
+            <button id="startButton" style="display:none;">Start Scanner</button>
+            <button id="stopButton" style="display:none;">Stop Scanner</button>
+        </div>
+    </div>
+
+    <script>
+        // SECURITY (XSS): This function escapes HTML to prevent script injection.
+        function escapeHTML(str) {
+            if (typeof str !== 'string') return str;
+            return str.replace(/[&<>"']/g, function(match) {
+                return {
+                    '&': '&amp;', '<': '&lt;', '>': '&gt;',
+                    '"': '&quot;', "'": '&#39;'
+                }[match];
+            });
+        }
+
+        const video = document.getElementById('qr-video');
+        const canvas = document.getElementById('qr-canvas');
+        const context = canvas.getContext('2d', { willReadFrequently: true });
+        const resultDiv = document.getElementById('result');
+        const permissionMessage = document.getElementById('permission-message');
+        const startButton = document.getElementById('startButton');
+        const stopButton = document.getElementById('stopButton');
+
+        let stream;
+        let videoInterval;
+        const FLASK_BACKEND_URL = window.location.origin;
+
+        async function startScanner() {
+            resultDiv.innerHTML = 'Scan result will appear here.';
+            resultDiv.className = '';
+            permissionMessage.style.display = 'none';
+            startButton.style.display = 'none';
+            stopButton.style.display = 'inline-block';
+
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+                video.srcObject = stream;
+                await video.play();
+                videoInterval = setInterval(scanFrame, 100);
+            } catch (err) {
+                console.error('Error accessing camera:', err);
+                permissionMessage.style.display = 'block';
+                permissionMessage.textContent = 'Error accessing camera. Please allow permissions and refresh.';
+                stopScanner();
+            }
+        }
+
+        function stopScanner() {
+            if (videoInterval) clearInterval(videoInterval);
+            if (stream) stream.getTracks().forEach(track => track.stop());
+            video.srcObject = null;
+            stopButton.style.display = 'none';
+            startButton.style.display = 'inline-block';
+        }
+
+        async function scanFrame() {
+            if (video.readyState === video.HAVE_ENOUGH_DATA) {
+                canvas.height = video.videoHeight;
+                canvas.width = video.videoWidth;
+                context.drawImage(video, 0, 0, canvas.width, canvas.height);
+                const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+                const code = jsQR(imageData.data, imageData.width, imageData.height);
+
+                if (code) {
+                    stopScanner();
+                    await validateQrCode(code.data);
+                }
+            }
+        }
+
+        async function validateQrCode(qrData) {
+            if (!qrData.startsWith(`${FLASK_BACKEND_URL}/validate_qr/`)) {
+                displayResult('Not a College Fest QR code.', '', 'invalid');
+                return;
+            }
+
+            const qrString = qrData.split('/').pop();
+
+            try {
+                const response = await fetch(`${FLASK_BACKEND_URL}/validate_qr/${qrString}`);
+                const result = await response.json();
+
+                let attendeeInfoHtml = '';
+                if (result.attendee_info) {
+                    // SECURE DISPLAY: Use escapeHTML on all user-provided data
+                    attendeeInfoHtml = `
+                        <div class="attendee-info">
+                            <p><strong>Name:</strong> ${escapeHTML(result.attendee_info.name)}</p>
+                            <p><strong>Batch:</strong> ${escapeHTML(String(result.attendee_info.batch))}</p>
+                            <p><strong>Roll No:</strong> ${escapeHTML(String(result.attendee_info.roll_number))}</p>
+                            <p><strong>Designation:</strong> ${escapeHTML(result.attendee_info.designation)}</p>
+                            <p><strong>Event:</strong> ${escapeHTML(result.attendee_info.event_type.replace(/_/g, ' '))}</p>
+                        </div>
+                    `;
+                }
+                displayResult(result.message, attendeeInfoHtml, result.status);
+            } catch (error) {
+                console.error('Network error during validation:', error);
+                displayResult('Network Error. Could not connect to server.', '', 'error');
+            }
+        }
+
+        function displayResult(message, attendeeInfoHtml = '', statusClass) {
+            resultDiv.innerHTML = `<p class="status-message status-${statusClass}">${escapeHTML(message)}</p>${attendeeInfoHtml}`;
+        }
+
+        async function initialSetup() {
+            try {
+                const streamCheck = await navigator.mediaDevices.getUserMedia({ video: true });
+                streamCheck.getTracks().forEach(track => track.stop());
+                startButton.style.display = 'inline-block';
+                permissionMessage.style.display = 'none';
+                resultDiv.innerHTML = 'Press Start Scanner to begin.';
+            } catch (err) {
+                permissionMessage.style.display = 'block';
+                permissionMessage.textContent = 'Camera access denied. Please enable permissions and refresh.';
+            }
+        }
+
+        startButton.addEventListener('click', startScanner);
+        stopButton.addEventListener('click', stopScanner);
+        window.onload = initialSetup;
+    </script>
+</body>
+</html>
